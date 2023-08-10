@@ -45,7 +45,7 @@ unsigned long lastmillis_stepper_report;
 unsigned long lastmillis_blocked_motor;
 unsigned long lastmillisloop;
 unsigned long lastmillisSpeed;
-double outputVal, setPoint;
+double outputVal, setPoint = 0;
 double speedSampleBuffer = 0;
 int speedSampleBufferCounter = 0;
 double speedSampleBufferRos = 0;
@@ -68,9 +68,6 @@ constexpr uint32_t steps_per_mm = 80*15;     // 4 microsteps
 
 #define PID_STEP_MS 25
 #define SPEED_SAMPLES 1
-// kp: 0.000100000011920928 ki: 1.399999980926513671 kd: 0.000000000000000050
-// kp: 0.020000002384185791 ki: 0.090000000000000000 kd: 0.000100000011920928  slibne
-// kp: 0.020000002384185791 ki: 0.060000000000000000 kd: 0.000000000000000000 1^-40
 // kp: 0.080000009536743164 ki: 0.100000000000000000 kd: 0.000000000000000001
 double kp = 0.08;
 double ki = 0.1;
@@ -98,7 +95,7 @@ int max_height_addr = sizeof(int8_t);
 TMC2130Stepper driver = TMC2130Stepper(EN_PIN, DIR_PIN, STEP_PIN, CS_PIN);
 AccelStepper stepper = AccelStepper(stepper.DRIVER, STEP_PIN, DIR_PIN);
 
-PID myPID(&count, &outputVal, &setPoint, kp, ki, kd, DIRECT);
+
 
 
 
@@ -110,14 +107,30 @@ unsigned long interval_stall = 200;
 
 
 bool vsense;
-// #define STALL_VALUE -20 // [-64..63] 8 microsteps
+// #define STALL_VALUE -20 // [-64..63] 8 microsteps  minus: more sensitive, plus: less sensitive
 #define STALL_VALUE -59 // [-64..63] 4 microsteps
 
 uint16_t rms_current(uint8_t CS, float Rsense = 0.11) {
   return (float)(CS+1)/32.0 * (vsense?0.180:0.325)/(Rsense+0.02) / 1.41421 * 1000;
 }
 
+PID myPID(&count, &outputVal, &setPoint, kp, ki, kd, DIRECT);
+
 void setup() {
+  pinMode(PWM_R, OUTPUT);
+  pinMode(PWM_L, OUTPUT);
+  pwmWrite(PWM_L, 0);
+  pwmWrite(PWM_R, 0);
+  InitTimersSafe();
+  SetPinFrequencySafe(PWM_R, frequency);
+  SetPinFrequencySafe(PWM_L, frequency);
+  setPoint = double(rpm); //205-3000rpm 4096
+  attachInterrupt(0, prerusenib, RISING);
+  lastmillis = millis();
+  myPID.SetMode(AUTOMATIC);
+  myPID.Compute();
+  myPID.SetSampleTime(50); // 4
+
   // EEPROM First run check
   if (EEPROM.get(check_eeprom_addr, check_eeprom) != 1)
   { // first run
@@ -161,19 +174,7 @@ void setup() {
   stepper.setEnablePin(EN_PIN);
   stepper.setPinsInverted(false, false, true);
   
-  pinMode(PWM_R, OUTPUT);
-  pinMode(PWM_L, OUTPUT);
-  analogWrite(PWM_R, 0);
-  analogWrite(PWM_L, 0);
-  InitTimersSafe();
-  SetPinFrequencySafe(PWM_R, frequency);
-  SetPinFrequencySafe(PWM_L, frequency);
-
-  setPoint = double(rpm); //205-3000rpm 4096
-  attachInterrupt(0, prerusenib, RISING);
-  lastmillis = millis();
-  myPID.SetMode(AUTOMATIC);
-  myPID.SetSampleTime(50); // 4
+  
   pinMode(SWITCH_PIN, INPUT);
 
 }
@@ -187,8 +188,6 @@ void loop() {
     goposition = false;
     // mower motor off
     motor_on = false;
-    // analogWrite(PWM_L, 0);
-    // analogWrite(PWM_R, 0);
     pwmWrite(PWM_L, 0);
     pwmWrite(PWM_R, 0);
   }else{
@@ -199,8 +198,6 @@ void loop() {
       goposition = false;
       // mower motor off
       motor_on = false;
-      // analogWrite(PWM_L, 0);
-      // analogWrite(PWM_R, 0);
       pwmWrite(PWM_L, 0);
       pwmWrite(PWM_R, 0);
     }else{
@@ -211,8 +208,6 @@ void loop() {
         gohome = false;
         // mower motor off
         motor_on = false;
-        // analogWrite(PWM_L, 0);
-        // analogWrite(PWM_R, 0);
         pwmWrite(PWM_L, 0);
         pwmWrite(PWM_R, 0);
       }else{
@@ -272,8 +267,6 @@ void loop() {
           }  
         }else{
           // myPID.stop();
-          // analogWrite(PWM_L, 0);
-          // analogWrite(PWM_R, 0);
           pwmWrite(PWM_L, 0);
           pwmWrite(PWM_R, 0);
           outputVal = 0;
@@ -308,9 +301,7 @@ void loop() {
     lastmillis_blocked_motor = millis();
     if (int(outputVal) > 0 && (count + count_last) == 0){
       motor_error = true; 
-      motor_on = false;
-      // analogWrite(PWM_L, 0);
-      // analogWrite(PWM_R, 0);     
+      motor_on = false;    
       pwmWrite(PWM_L, 0);
       pwmWrite(PWM_R, 0);     
 

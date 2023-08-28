@@ -36,9 +36,9 @@ int  motor_on_last = 0;
 bool motor_direction = false;  // true=right, false=left
 bool motor_direction_change = false;  // if motor direction change event trigered
 bool motor_direction_change_req = true;  // true=right, false=left motor direction change request
-bool motor_error = 0;
+bool motor_error = false;
 double countb = 0;
-double count;
+double count = 0;
 double count_last = 0;
 unsigned long lastmillis;
 unsigned long lastmillis_stepper_report;
@@ -128,7 +128,6 @@ void setup() {
   attachInterrupt(0, prerusenib, RISING);
   lastmillis = millis();
   myPID.SetMode(AUTOMATIC);
-  myPID.Compute();
   myPID.SetSampleTime(50); // 4
 
   // EEPROM First run check
@@ -299,6 +298,8 @@ void loop() {
   // Blocked motor emergency off
   if ((millis() - lastmillis_blocked_motor) >= 500){
     lastmillis_blocked_motor = millis();
+    // Serial.print("LOG|");
+    // Serial.println(int(outputVal));
     if (int(outputVal) > 0 && (count + count_last) == 0){
       motor_error = true; 
       motor_on = false;    
